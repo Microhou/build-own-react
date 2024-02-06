@@ -1,4 +1,18 @@
 // eslint-disable-next-line no-unused-vars
+export type Fiber = {
+    // Fiber 类型信息
+    type: any,
+    // ...
+  
+    // ⚛️ 链表结构
+    // 指向父节点，或者render该节点的组件
+    return: Fiber | null,
+    // 指向第一个子节点
+    child: Fiber | null,
+    // 指向下一个兄弟节点
+    sibling: Fiber | null,
+  }
+
 const ENOUGH_TIME = 1; // milliseconds
 
 let  workQueue = [];
@@ -97,20 +111,29 @@ function getRoot(fiber) {
 }
 
 function performUnitOfWork(wipFiber) {
+    // 对该节点进行处理
     beginWork(wipFiber);
-    if (wipFiber.child) { // 工作没有完成, 返回下一次更新的状态
+
+    if (wipFiber.child) { // 如果存在子节点，那么下一个待处理的就是子节点
         return wipFiber.child;
     }
 
     // No child, we call completeWork until we find a sibling
+    // 没有子节点了，上溯查找兄弟节点
     let uow = wipFiber;
     while (uow) {
         completeWork(uow);
+
+        // 到顶层节点了, 退出
+        if (temp === topWork) {
+            break
+        }
+        // 找到，下一个要处理的就是兄弟节点
         if (uow.sibling) {
              // Sibling 返回, 再次变为 wipFiber, 被 beginWork 调用
              return uow.sibling;
         }
-
+        // 没有, 继续上溯
         uow = uow.parent;
     }
 }
@@ -148,4 +171,38 @@ function updateClassComponent(wipFiber) {
 
     const newChildElements = wipFiber.stateNode.render();
     reconcileChildrenArray(wipFiber, newChildElements);
+}
+
+function completeWork(fiber) {
+    const parent = fiber.return;
+
+    // 到达顶端
+    if (parent == null || fiber === topWork) {
+        pendingCommit = fiber
+        return
+    }
+
+    if (fiber.effectTag != null) {
+        if (parent.nextEffect) {
+            parent.nextEffect.nextEffect = fiber
+        } else {
+            parent.nextEffect = fiber
+        }
+    } else if(fiber.nextEffect){
+        parent.nextEffect = fiber.nextEffect
+    }
+}
+
+function commitAllWork(fiber) {
+    let next = fiber
+    while (next) {
+        if (fiber.effectTag) {
+            commitWork(fiber)
+        }
+
+        next = fiber.nextEffect
+    }
+
+    // 清理现场
+  pendingCommit = nextUnitOfWork = topWork = null
 }
